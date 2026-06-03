@@ -3,12 +3,15 @@
 # codex-review-review.sh - Have Codex critique Claude's PR review.
 #
 # Stage 2 of the review-pr-cx (Claude -> Codex -> Claude) scheme.
-# Codex reads the locally-generated diff and Claude's review, then critiques the
-# review on three axes (incorrect claim / missed issue / framing). This is a
-# one-shot consultation modeled on humanize's ask-codex.sh -- no state, no hooks.
+# Codex reads Claude's setup evidence, the locally-generated diff, and Claude's
+# review. It audits setup, independently reviews with the review-pr rubric, then
+# critiques the review on three axes (incorrect claim / missed issue / framing).
+# This is a one-shot consultation modeled on humanize's ask-codex.sh -- no state,
+# no hooks.
 #
 # Usage:
-#   codex-review-review.sh --pr <n> --diff <path> --review <path> --out <path> \
+#   codex-review-review.sh --pr <n> --setup <path> --diff <path> \
+#                          --review <path> --out <path> \
 #                          [--codex-model MODEL:EFFORT] [--codex-timeout SECONDS]
 #
 # Output:
@@ -29,6 +32,7 @@ source "$SCRIPT_DIR/portable-timeout.sh"
 # Plugin root is the parent of scripts/ . Falls back to CLAUDE_PLUGIN_ROOT when set.
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 RUBRIC_FILE="$PLUGIN_ROOT/templates/codex-critique-rubric.md"
+REVIEW_PR_SKILL_FILE="$PLUGIN_ROOT/skills/review-pr/SKILL.md"
 
 # ---- Defaults ----
 DEFAULT_CODEX_MODEL="gpt-5.5"
@@ -39,6 +43,7 @@ CODEX_MODEL="$DEFAULT_CODEX_MODEL"
 CODEX_EFFORT="$DEFAULT_CODEX_EFFORT"
 CODEX_TIMEOUT="$DEFAULT_CODEX_TIMEOUT"
 PR_NUMBER=""
+SETUP_FILE=""
 DIFF_FILE=""
 REVIEW_FILE=""
 OUT_FILE=""
@@ -48,13 +53,14 @@ show_help() {
 codex-review-review.sh - Codex critiques Claude's PR review (Stage 2 of review-pr-cx)
 
 USAGE:
-  codex-review-review.sh --pr <n> --diff <path> --review <path> --out <path> [OPTIONS]
+  codex-review-review.sh --pr <n> --setup <path> --diff <path> --review <path> --out <path> [OPTIONS]
 
 REQUIRED:
   --pr <n>             PR number (used only for log labels)
-  --diff <path>        Locally-generated PR diff (e.g. .pr-review/pr-<n>/diff.patch)
-  --review <path>      Claude's review (e.g. .pr-review/pr-<n>/claude-review.md)
-  --out <path>         Where to write Codex's critique (e.g. .pr-review/pr-<n>/codex-critique.md)
+  --setup <path>       Setup evidence (e.g. .review_loop/pr-<n>/setup.md)
+  --diff <path>        Locally-generated PR diff (e.g. .review_loop/pr-<n>/diff.patch)
+  --review <path>      Claude's review (e.g. .review_loop/pr-<n>/claude-review.md)
+  --out <path>         Where to write Codex's critique (e.g. .review_loop/pr-<n>/codex-critique.md)
 
 OPTIONS:
   --codex-model <MODEL:EFFORT>   Default: gpt-5.5:high
@@ -73,6 +79,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help) show_help ;;
         --pr)            PR_NUMBER="${2:-}"; shift 2 ;;
+        --setup)         SETUP_FILE="${2:-}"; shift 2 ;;
         --diff)          DIFF_FILE="${2:-}"; shift 2 ;;
         --review)        REVIEW_FILE="${2:-}"; shift 2 ;;
         --out)           OUT_FILE="${2:-}"; shift 2 ;;
@@ -110,7 +117,7 @@ if ! command -v codex &>/dev/null; then
     exit 1
 fi
 
-for pair in "--pr:$PR_NUMBER" "--diff:$DIFF_FILE" "--review:$REVIEW_FILE" "--out:$OUT_FILE"; do
+for pair in "--pr:$PR_NUMBER" "--setup:$SETUP_FILE" "--diff:$DIFF_FILE" "--review:$REVIEW_FILE" "--out:$OUT_FILE"; do
     flag="${pair%%:*}"; val="${pair#*:}"
     if [[ -z "$val" ]]; then
         echo "Error: missing required argument $flag (use --help)" >&2
@@ -130,6 +137,10 @@ if [[ ! "$CODEX_EFFORT" =~ ^[a-zA-Z0-9_-]+$ ]]; then
     echo "Error: Codex effort contains invalid characters: $CODEX_EFFORT" >&2
     exit 1
 fi
+if [[ ! -f "$SETUP_FILE" ]]; then
+    echo "Error: setup file not found: $SETUP_FILE" >&2
+    exit 1
+fi
 if [[ ! -f "$DIFF_FILE" ]]; then
     echo "Error: diff file not found: $DIFF_FILE" >&2
     exit 1
@@ -143,33 +154,58 @@ if [[ ! -f "$RUBRIC_FILE" ]]; then
     echo "  (expected under \$CLAUDE_PLUGIN_ROOT/templates/ or ../templates/)" >&2
     exit 1
 fi
+if [[ ! -f "$REVIEW_PR_SKILL_FILE" ]]; then
+    echo "Error: review-pr skill not found: $REVIEW_PR_SKILL_FILE" >&2
+    echo "  (expected under \$CLAUDE_PLUGIN_ROOT/skills/review-pr/SKILL.md or ../skills/review-pr/SKILL.md)" >&2
+    exit 1
+fi
 
 # ---- Resolve absolute paths so codex (run with -C <root>) can find them ----
 abspath() { (cd "$(dirname "$1")" && printf '%s/%s' "$(pwd)" "$(basename "$1")"); }
+SETUP_ABS="$(abspath "$SETUP_FILE")"
 DIFF_ABS="$(abspath "$DIFF_FILE")"
 REVIEW_ABS="$(abspath "$REVIEW_FILE")"
 mkdir -p "$(dirname "$OUT_FILE")"
 OUT_ABS="$(abspath "$OUT_FILE")"
 
 # Working dir for codex: the repo root containing the diff (so it can read changed files too).
-CODEX_CWD="$(cd "$(dirname "$DIFF_ABS")/../.." 2>/dev/null && pwd || pwd)"
+ARTIFACT_DIR="$(dirname "$DIFF_ABS")"
+if CODEX_CWD="$(git -C "$ARTIFACT_DIR" rev-parse --show-toplevel 2>/dev/null)"; then
+    :
+elif CODEX_CWD="$(cd "$ARTIFACT_DIR/../.." 2>/dev/null && pwd)"; then
+    :
+else
+    CODEX_CWD="$(pwd)"
+fi
 
-# ---- Build prompt: rubric + concrete file pointers ----
+# ---- Build prompt: Codex rubric + review-pr rubric + concrete file pointers ----
 PROMPT="$(cat "$RUBRIC_FILE")
+
+---
+
+## Review-pr rubric Claude was asked to follow
+
+Codex must use this same methodology for its independent review pass:
+
+BEGIN REVIEW-PR SKILL
+$(cat "$REVIEW_PR_SKILL_FILE")
+END REVIEW-PR SKILL
 
 ---
 
 ## Inputs for this run (PR #${PR_NUMBER})
 
-You are running with the repository checked out at the PR head. Read these two files
-from disk before writing anything:
+You are running with the repository checked out at the PR head. Read these files from
+disk before writing the critique:
 
+- Setup evidence from Claude: ${SETUP_ABS}
 - PR diff (locally generated, authoritative evidence): ${DIFF_ABS}
 - Claude's review to critique: ${REVIEW_ABS}
 
-You may also open any changed source file referenced in the diff for full context.
-Do not modify any file. Do not access the network or GitHub. Output only the critique
-in the schema defined above."
+First audit setup, then independently review the diff/source using the review-pr rubric,
+then compare with Claude on the three axes. You may also open any changed source file
+referenced in the diff for full context. Do not modify any file. Do not access the
+network or GitHub. Output only the critique in the schema defined above."
 
 # ---- Build codex command (same pattern as ask-codex.sh) ----
 CODEX_EXEC_ARGS=("-m" "$CODEX_MODEL")

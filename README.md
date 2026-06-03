@@ -1,16 +1,3 @@
-# MyConfig
-
-Personal Claude Code plugin: a set of engineering skills, packaged so any fresh machine or
-Docker container can install them in two lines.
-
-| Skill | What it does |
-|-------|--------------|
-| `review-pr` | Rigorous, evidence-based PR / diff review (P0-P4, local diffs, GitHub draft comment). Standalone. |
-| `review-pr-cx` | **Claude -> Codex -> Claude** cross-checked PR review. Claude reviews, Codex critiques the review (incorrect claims / missed issues / framing), Claude reconciles into one final artifact. Built on `review-pr`. |
-| `slop-cleaner` | Cleans AI "slop" (boilerplate, over-chatty comments, dead abstractions). |
-| `benchmark-sweeper` | Helps set up / sweep benchmarks. |
-
----
 
 ## Setup guide (Claude Code plugin)
 
