@@ -211,7 +211,10 @@ Also, if the pr includes a change in core runtime logic of a model/framework, es
 
 ## Output Format
 
-Use this structure for a saved artifact, save it in your working git repo as review-<pr_number>_draft.md
+Use this structure for a saved artifact. By default, save it in your working git repo
+as `review-<pr_number>_draft.md`. If a parent workflow provides an explicit artifact
+path (for example `review-pr-cx` uses `.review_loop/pr-<n>/claude-review.md`), save it
+there instead and keep that workflow's required evidence files.
 
 ```markdown
 # PR #{number}: {title}
@@ -288,4 +291,4 @@ Before finalizing:
 - Reuse and abstraction claims are backed by sibling or utility searches.
 - The output is English-only.
 - No personal directories, account names, or machine-specific paths appear in the review or skill behavior unless the user explicitly supplied them for this task.
-- Delete the additioanl directory/folder/file you created for review, aside from the review doc you created.
+- Delete the additional directory/folder/file you created for review, aside from the review doc you created. If a parent workflow explicitly requires an artifact directory, such as `.review_loop/pr-<n>/`, preserve only that directory's required artifacts and clean up everything else.
