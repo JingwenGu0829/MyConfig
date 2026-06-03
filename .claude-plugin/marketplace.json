@@ -1,0 +1,14 @@
+{
+  "name": "JingwenGu0829",
+  "owner": {
+    "name": "JingwenGu0829"
+  },
+  "plugins": [
+    {
+      "name": "myconfig",
+      "source": "./",
+      "description": "Personal engineering skills: review-pr, review-pr-cx (Claude->Codex->Claude cross-checked review), slop-cleaner, benchmark-sweeper.",
+      "version": "0.1.0"
+    }
+  ]
+}

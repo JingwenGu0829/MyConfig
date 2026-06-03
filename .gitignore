@@ -1,0 +1,7 @@
+# Review artifacts produced by review-pr-cx live in the *reviewed* repo, but
+# ignore them here too in case this repo is ever the review target.
+.pr-review/
+
+# OS / editor cruft
+.DS_Store
+*.swp
