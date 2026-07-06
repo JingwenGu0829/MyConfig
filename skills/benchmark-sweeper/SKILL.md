@@ -7,6 +7,8 @@ description: Use when orchestrating experiment sets, benchmark sweeps, A/B tests
 
 Use this skill for benchmark runs, A/B comparisons, regression checks, and research sweeps. 
 
+ALWAYS NOTE THAT AVOID THE COST OF STARTING AND SHUTTING DOWN SERVER. That said, if you are to run the optimization of infernce over another, try to finish all the experiments on server A, then shut it down, then start the other server. Don't ping-pong exepriements betweeen server, or that's gonna increase a lot of time in waiting for server to start and shutdown.
+
 ## Output directory
 Use workspace directory , or the directory that user specifices as the root dir of running experiment/benchmark sweeps and record result.
 Take a general look of the user inqury and name it sweep_<proj_name>.md 
