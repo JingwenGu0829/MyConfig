@@ -7,8 +7,9 @@
     {
       "name": "myconfig",
       "source": "./",
-      "description": "Personal engineering skills: review-pr, review-pr-cx (Claude->Codex->Claude cross-checked review), slop-cleaner, benchmark-sweeper.",
-      "version": "0.1.0"
+      "description": "Personal engineering skills: review-pr, review-pr-cx (Claude->Codex->Claude), review-pr-panel (two-round Fable/Opus/Codex panel), slop-cleaner, benchmark-sweeper.",
+      "version": "0.2.0"
     }
-  ]
+  ],
+  "description": "Personal engineering skills for rigorous, multi-model PR review."
 }

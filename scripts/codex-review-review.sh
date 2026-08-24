@@ -35,7 +35,7 @@ RUBRIC_FILE="$PLUGIN_ROOT/templates/codex-critique-rubric.md"
 REVIEW_PR_SKILL_FILE="$PLUGIN_ROOT/skills/review-pr/SKILL.md"
 
 # ---- Defaults ----
-DEFAULT_CODEX_MODEL="gpt-5.5"
+DEFAULT_CODEX_MODEL="gpt-5.6-sol"
 DEFAULT_CODEX_EFFORT="high"
 DEFAULT_CODEX_TIMEOUT=3600
 
@@ -63,13 +63,14 @@ REQUIRED:
   --out <path>         Where to write Codex's critique (e.g. .review_loop/pr-<n>/codex-critique.md)
 
 OPTIONS:
-  --codex-model <MODEL:EFFORT>   Default: gpt-5.5:high
+  --codex-model <MODEL:EFFORT>   Default: gpt-5.6-sol:high
   --codex-timeout <SECONDS>      Default: 3600
   -h, --help                     Show this help
 
 ENVIRONMENT:
   HUMANIZE_CODEX_BYPASS_SANDBOX  "true"/"1" -> use --dangerously-bypass-approvals-and-sandbox
-                                 instead of --full-auto (dangerous; only if codex sandbox blocks file reads)
+                                 instead of --sandbox read-only (dangerous; only if the codex
+                                 sandbox blocks file reads)
 HELP_EOF
     exit 0
 }
@@ -212,11 +213,14 @@ CODEX_EXEC_ARGS=("-m" "$CODEX_MODEL")
 if [[ -n "$CODEX_EFFORT" ]]; then
     CODEX_EXEC_ARGS+=("-c" "model_reasoning_effort=${CODEX_EFFORT}")
 fi
-CODEX_AUTO_FLAG="--full-auto"
+# The critique step only reads: a read-only sandbox matches that contract, and unlike
+# --full-auto it does not trip the calling session's auto-approval classifier.
+CODEX_AUTO_FLAG="--sandbox read-only"
 if [[ "${HUMANIZE_CODEX_BYPASS_SANDBOX:-}" == "true" ]] || [[ "${HUMANIZE_CODEX_BYPASS_SANDBOX:-}" == "1" ]]; then
     CODEX_AUTO_FLAG="--dangerously-bypass-approvals-and-sandbox"
 fi
-CODEX_EXEC_ARGS+=("$CODEX_AUTO_FLAG" "-C" "$CODEX_CWD")
+# shellcheck disable=SC2206  # intentional word split: the flag may carry a value
+CODEX_EXEC_ARGS+=($CODEX_AUTO_FLAG "-C" "$CODEX_CWD")
 
 echo "codex-review-review: pr=#${PR_NUMBER} model=${CODEX_MODEL} effort=${CODEX_EFFORT} timeout=${CODEX_TIMEOUT}s" >&2
 echo "codex-review-review: cwd=${CODEX_CWD}" >&2
@@ -224,8 +228,9 @@ echo "codex-review-review: running codex exec..." >&2
 
 # ---- Run ----
 CODEX_EXIT_CODE=0
-printf '%s' "$PROMPT" | run_with_timeout "$CODEX_TIMEOUT" codex exec "${CODEX_EXEC_ARGS[@]}" - \
-    > "$OUT_ABS" 2> "${OUT_ABS}.log" || CODEX_EXIT_CODE=$?
+# -o writes just the final message; session chatter stays in the log, out of the artifact.
+printf '%s' "$PROMPT" | run_with_timeout "$CODEX_TIMEOUT" codex exec "${CODEX_EXEC_ARGS[@]}" -o "$OUT_ABS" - \
+    > "${OUT_ABS}.log" 2>&1 || CODEX_EXIT_CODE=$?
 
 if [[ $CODEX_EXIT_CODE -eq 124 ]]; then
     echo "Error: Codex timed out after ${CODEX_TIMEOUT}s. Retry with --codex-timeout $((CODEX_TIMEOUT * 2))" >&2

@@ -70,7 +70,7 @@ Invoke the bundled wrapper. Codex reads `setup.md`, `diff.patch`, `claude-review
   --out .review_loop/pr-<n>/codex-critique.md
 ```
 
-- Default model/effort is `gpt-5.5:high`, 3600s timeout. Pass `--codex-model MODEL:EFFORT` or `--codex-timeout SECONDS` only if the user asked.
+- Default model/effort is `gpt-5.6-sol:high`, 3600s timeout. Pass `--codex-model MODEL:EFFORT` or `--codex-timeout SECONDS` only if the user asked.
 - The script prints Codex's critique to stdout and saves it to `--out`. Read it carefully.
 - On non-zero exit, report the error to the user (timeout -> suggest a larger `--codex-timeout`; missing `codex` -> point to install). Do not fabricate a critique.
 
